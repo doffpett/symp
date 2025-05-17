@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>17. mai flaggtider</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to bottom, #00205b 0%, #ba0c2f 100%);
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        .flag {
+            font-size: 100px;
+            margin: 20px;
+        }
+        .warning {
+            color: yellow;
+            font-weight: bold;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Gratulerer med dagen!</h1>
+    <div id="flag" class="flag">🏳️</div>
+    <div id="times"></div>
+    <div id="weather"></div>
+    <div id="warning" class="warning"></div>
+
+    <script>
+        async function getSunTimes(lat, lon) {
+            const res = await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&formatted=0`);
+            const data = await res.json();
+            return {
+                sunrise: new Date(data.results.sunrise),
+                sunset: new Date(data.results.sunset)
+            };
+        }
+
+        async function getWeather(lat, lon) {
+            const res = await fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${lat}&lon=${lon}`, {
+                headers: {
+                    'User-Agent': 'flag-app-example'
+                }
+            });
+            const data = await res.json();
+            const today = new Date().toISOString().split('T')[0];
+            const timeseries = data.properties.timeseries.filter(t => t.time.startsWith(today));
+            const weatherNow = timeseries[0];
+            const windSpeeds = timeseries.map(t => t.data.instant.details.wind_speed);
+            const strongWind = Math.max(...windSpeeds) > 10; // m/s
+            return {
+                temp: weatherNow.data.instant.details.air_temperature,
+                description: weatherNow.data.next_1_hours.summary.symbol_code,
+                strongWind
+            };
+        }
+
+        function formatTime(date) {
+            return date.toLocaleTimeString('no-NO', {hour: '2-digit', minute:'2-digit'});
+        }
+
+        function updateFlag(raiseTime, lowerTime) {
+            const now = new Date();
+            const flagDiv = document.getElementById('flag');
+            if (now >= raiseTime && now <= lowerTime) {
+                flagDiv.textContent = '🇳🇴';
+            } else {
+                flagDiv.textContent = '🏳️';
+            }
+        }
+
+        function displayInfo(raiseTime, lowerTime, weather) {
+            document.getElementById('times').textContent = `Heis flagget: ${formatTime(raiseTime)} – Fire flagget: ${formatTime(lowerTime)}`;
+            document.getElementById('weather').textContent = `Temperatur: ${weather.temp}°C, Vær: ${weather.description}`;
+            if (weather.strongWind) {
+                document.getElementById('warning').textContent = 'Flagg bør ikke heises i dag – meldt sterk vind';
+            }
+            updateFlag(raiseTime, lowerTime);
+        }
+
+        function calcFlagTimes(sunrise, sunset) {
+            const date = new Date();
+            const raise = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 8, 0, 0);
+            const lower = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 21, 0, 0);
+            if (sunrise > raise) raise.setTime(sunrise.getTime());
+            if (sunset < lower) lower.setTime(sunset.getTime());
+            return { raise, lower };
+        }
+
+        async function init() {
+            if (!navigator.geolocation) {
+                alert('Geolocation kreves for å finne flaggtider');
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(async pos => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                const sun = await getSunTimes(lat, lon);
+                const weather = await getWeather(lat, lon);
+                const { raise, lower } = calcFlagTimes(sun.sunrise, sun.sunset);
+                displayInfo(raise, lower, weather);
+            }, err => alert('Kunne ikke hente posisjon'));
+        }
+        init();
+    </script>
+</body>
+</html>
